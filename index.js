@@ -1,115 +1,90 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 var morgan = require("morgan");
 const cors = require("cors");
-
-let persons = [
-  {
-    id: "1",
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: "2",
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: "3",
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: "4",
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
+const Person = require('./models/person')
 
 app.use(express.json());
 app.use(morgan("tiny"));
+
+morgan.token("body", (request) => JSON.stringify(request.body));
 app.use(
   morgan(":method :url :status :res[content-length] :response-time :body")
 );
-app.use(express.static('dist'))
 
+app.use(express.static('dist'))
 app.use(cors());
 
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if(error.name === "CastError") {
+    return response.status(400).send({error: 'malformed id'});
+  }
+
+  next(error);
+}
+
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({error: 'unknown endpoint'});
+}
+
 app.get("/api/persons", (request, response) => {
-  response.json(persons);
+  Person.find({}).then(person => {
+    response.json(person);
+  });
 });
 
 app.get("/info", (request, response) => {
-  const lenPersons = persons.length;
-  const dateNow = Date();
-  response.send(
-    "<div><p>Phonebook has info for " +
-      lenPersons +
-      " people</p><p>" +
-      dateNow +
-      "</p></div>"
-  );
-
-  morgan.token("body", (request) => JSON.stringify(""));
-
+  Person.find({}).then(person => {
+    response.send(
+      "<div><p>Phonebook has info for " +
+      person.length +
+        " people</p><p>" +
+        Date() +
+        "</p></div>"
+    );
+  });
 });
 
-app.get("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const person = persons.find((person) => person.id === id);
-  if (person === undefined) {
-    response.status(404).end();
-  } else {
-    console.log(person);
-    response.json(person);
-  }
 
-  morgan.token("body", (request) => JSON.stringify(""));
+app.get("/api/persons/:id", (request, response, next) => {
+  Person.findById(request.params.id)
+  .then(person => {
+    if(person) {
+      response.json(person);
+    } else {
+      response.status(404).end();
+    }
+  }).catch(error => next(error));
 });
 
 app.delete("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  persons.filter((person) => person.id !== id);
-
-  response.status(204).end();
+  Person.findByIdAndDelete(request.params.id)
+  .then(result => {
+    response.status(204).end();
+  }).catch(error => next(error));
 });
-
-morgan.token("body", (request) => JSON.stringify(""));
-
-const generateRandomId = () => {
-  return Math.floor(Math.random() * 200);
-};
 
 app.post("/api/persons", (request, response) => {
   const body = request.body;
-  const idGenerated = generateRandomId();
 
-  const nameFound = persons.find((person) => {
-    return person.name === body.name;
+  const person = new Person({
+    name: body.name,
+    phone: body.phone,
   });
 
-  if (!body.name) {
-    return response.status(400).json({ error: "Name must not be emptied" });
-  } else if (nameFound !== undefined) {
-    return response.status(400).json({ error: "Name must be unique" });
-  } else if (!body.number) {
-    return response.status(400).json({ error: "Number must not be emptied" });
-  }
+  person.save().then(personSaved => {
+    response.json(personSaved);
+  });
 
-  const person = {
-    id: idGenerated.toString(),
-    name: body.name,
-    number: body.number,
-  };
-
-  persons = persons.concat(person);
-
-  morgan.token("body", (request) => JSON.stringify(request.body));
-
-  response.json(person);
 });
 
-const PORT = process.env.PORT || 3001
+app.use(unknownEndpoint)
+app.use(errorHandler)
+
+const PORT = process.env.PORT
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
