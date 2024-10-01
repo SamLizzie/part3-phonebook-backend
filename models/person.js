@@ -10,7 +10,13 @@ mongoose.connect(url).then(result => {
   console.log("Error to connect to MongoDB: " + error.message);
 });
 
-const phonebookSchema = new mongoose.Schema({name: String, phone: String});
+const phonebookSchema = new mongoose.Schema(
+  {name: {
+    type: String, 
+    minLength: 3,
+    required: true,
+  }, 
+  phone: String});
 
 phonebookSchema.set('toJSON', {transform: (document, returnedObject) => {
   returnedObject.id = returnedObject._id.toString();
